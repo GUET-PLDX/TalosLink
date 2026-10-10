@@ -4,6 +4,15 @@ Talos 视觉通信的 MCU 端 C++20 协议组件，依据 `/home/wanqiq/Referenc
 `packet.hpp`、`stm32.hpp`、`serial.hpp` 和 `serial_protocol_test.cpp` 实现。
 无堆分配、异常、RTTI 或操作系统依赖，可用于 STM32F407 / LibXR。
 
+采用单头文件布局，使用方只需包含 `TalosLink.hpp`：
+
+```text
+TalosLink.hpp              # 协议结构、布局校验、编码和流式解析
+CMakeLists.txt             # xrobot 头文件路径 / 独立测试构建
+README.md                 # 使用说明及线协议
+tests/talos_link_test.cpp  # 主机端协议测试
+```
+
 `Pldx::Talos::TalosLink` 接收完整视觉指令和简化视觉指令；回调只报告有效帧。
 调用方负责 UART/USB 读写、在线超时、控制模式及开火安全判断。
 
@@ -31,7 +40,7 @@ auto tx = Pldx::Talos::TalosLink::Encode(imu_frame);
 接收支持半帧、粘包、噪声恢复、错误帧尾恢复，拒绝非法 bool、非有限浮点数和负距离。
 协议没有 CRC；帧头帧尾不能保证检测所有传输错误。
 
-参考中的 Quanta 结构也保留在 `TalosPacket.hpp`，但其载荷为 300 字节，
+参考中的 Quanta 结构也保留在 `TalosLink.hpp`，但其载荷为 300 字节，
 超出 uint8_t len 的表示范围，不能按参考串口长度公式传输。当前不解析该帧；
 启用前需要与上位机明确分包或升级长度字段。
 

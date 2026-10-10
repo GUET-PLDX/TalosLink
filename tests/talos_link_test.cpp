@@ -18,26 +18,29 @@ auto bytes_of(Frame frame) {
 }
 int main() {
   State state;
-  TalosLink link(
-      &state,
-      [](void* context, const SendVisionData& FRAME) {
-        auto& state = *static_cast<State*>(context);
+  const auto VISION = TalosLink::VisionCallback::Create(
+      [](bool, State* context, const SendVisionData& FRAME) {
+        auto& state = *context;
         ++state.full;
         state.yaw = FRAME.data.target_yaw;
       },
-      [](void* context, const SendSimpleVisionData& FRAME) {
-        auto& state = *static_cast<State*>(context);
+      &state);
+  const auto SIMPLE_VISION = TalosLink::SimpleVisionCallback::Create(
+      [](bool, State* context, const SendSimpleVisionData& FRAME) {
+        auto& state = *context;
         ++state.simple;
         state.yaw = FRAME.data.target_yaw;
-      });
+      },
+      &state);
+  TalosLink link(VISION, SIMPLE_VISION);
   SendVisionData frame{};
   frame.header = {0x5A, 29, 0x02};
   frame.eof = 0xA5;
   frame.data.target_yaw = 1.25f;
   const auto FULL = bytes_of(frame);
-  link.Feed(std::span(FULL).first(7));
+  link.Feed({FULL.data(), 7});
   assert(state.full == 0);
-  link.Feed(std::span(FULL).subspan(7));
+  link.Feed({FULL.data() + 7, FULL.size() - 7});
   assert(state.full == 1 && state.yaw == 1.25f);
   auto bad = FULL;
   bad.back() = 0;
@@ -45,7 +48,7 @@ int main() {
   stream.insert(stream.end(), bad.begin(), bad.end());
   stream.insert(stream.end(), FULL.begin(), FULL.end());
   stream.insert(stream.end(), FULL.begin(), FULL.end());
-  link.Feed(stream);
+  link.Feed({stream.data(), stream.size()});
   assert(state.full == 3);
   bad = FULL;
   bad[3] = 2;
@@ -57,7 +60,7 @@ int main() {
   simple.header = {0x5A, 4, 0x04};
   simple.eof = 0xA5;
   simple.data.target_yaw = -0.5f;
-  for (auto byte : bytes_of(simple)) link.Feed(std::span(&byte, 1));
+  for (auto byte : bytes_of(simple)) link.Feed({&byte, 1});
   assert(state.simple == 1 && state.yaw == -0.5f);
   ReceiveImuData imu{};
   imu.time_stamp = 0x12345678;
@@ -68,7 +71,63 @@ int main() {
   const auto SIMPLE = TalosLink::Encode(ReceiveSimpleImuData{});
   assert(CAPS[1] == 3 && CAPS[2] == 3 && SIMPLE[1] == 13 && SIMPLE[2] == 3);
   std::vector<uint8_t> noise(10000, 0x5A);
-  link.Feed(noise);
+  link.Feed({noise.data(), noise.size()});
   link.Feed(FULL);
   assert(state.full == 4);
+
+  LibXR::ReadPort read_port(128);
+  read_port = [](LibXR::ReadPort&, bool) { return LibXR::ErrorCode::OK; };
+  LibXR::WritePort write_port(4, 128);
+  write_port = [](LibXR::WritePort&, bool) { return LibXR::ErrorCode::OK; };
+  TalosLink transport(read_port, write_port, VISION, SIMPLE_VISION);
+  assert(transport.Poll() == LibXR::ErrorCode::OK);
+  assert(read_port.busy_.load() == LibXR::ReadPort::BusyState::IDLE);
+  assert(read_port.queue_data_->PushBatch(FULL.data(), 7) ==
+         LibXR::ErrorCode::OK);
+  assert(transport.Poll() == LibXR::ErrorCode::OK && state.full == 4);
+  assert(read_port.queue_data_->PushBatch(FULL.data() + 7, FULL.size() - 7) ==
+         LibXR::ErrorCode::OK);
+  assert(transport.Poll() == LibXR::ErrorCode::OK && state.full == 5);
+  assert(read_port.Size() == 0);
+  assert(read_port.queue_data_->PushBatch(FULL.data(), FULL.size()) ==
+         LibXR::ErrorCode::OK);
+  read_port.busy_.store(LibXR::ReadPort::BusyState::PENDING);
+  assert(transport.Poll() == LibXR::ErrorCode::BUSY && state.full == 5);
+  read_port.busy_.store(LibXR::ReadPort::BusyState::IDLE);
+  assert(transport.Poll() == LibXR::ErrorCode::OK && state.full == 6);
+  LibXR::WriteOperation operation;
+  assert(transport.Send(imu, operation) == LibXR::ErrorCode::OK);
+  std::array<uint8_t, sizeof(imu)> sent{};
+  assert(write_port.queue_data_->PopBatch(sent.data(), sent.size()) ==
+         LibXR::ErrorCode::OK);
+  assert(sent == IMU);
+  LibXR::WriteInfoBlock info{};
+  assert(write_port.queue_info_->Pop(info) == LibXR::ErrorCode::OK);
+  assert(info.data.size_ == IMU.size());
+  write_port.Finish(false, LibXR::ErrorCode::OK, info);
+  std::array<uint8_t, 128> filler{};
+  assert(write_port.queue_data_->PushBatch(filler.data(), filler.size()) ==
+         LibXR::ErrorCode::OK);
+  assert(transport.Send(imu, operation) == LibXR::ErrorCode::FULL);
+  assert(write_port.Size() == filler.size() &&
+         write_port.queue_info_->Size() == 0);
+  assert(write_port.queue_data_->PopBatch(filler.data(), filler.size()) ==
+         LibXR::ErrorCode::OK);
+  assert(link.Poll() == LibXR::ErrorCode::NOT_SUPPORT);
+  assert(link.Send(imu, operation) == LibXR::ErrorCode::NOT_SUPPORT);
+  write_port = nullptr;
+  assert(transport.Send(imu, operation) == LibXR::ErrorCode::NOT_SUPPORT);
+  read_port = nullptr;
+  assert(transport.Poll() == LibXR::ErrorCode::NOT_SUPPORT);
+
+  bool isr_seen = false;
+  TalosLink isr_link(TalosLink::VisionCallback::Create(
+      [](bool in_isr, bool* context, const SendVisionData&) {
+        *context = in_isr;
+      },
+      &isr_seen));
+  isr_link.Feed({FULL.data(), FULL.size()}, true);
+  assert(isr_seen);
+  TalosLink empty_link;
+  empty_link.Feed({FULL.data(), FULL.size()});
 }

@@ -3,8 +3,8 @@
 /* === MODULE MANIFEST V2 ===
 module_description: Talos visual communication protocol over LibXR UART/USB
 depends:
-- id: GUET-PLDX/CMD
-- id: GUET-PLDX/Referee
+- id: pldx/CMD
+- id: pldx/Referee
 === END MANIFEST === */
 // clang-format on
 

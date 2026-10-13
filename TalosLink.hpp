@@ -2,19 +2,9 @@
 // clang-format off
 /* === MODULE MANIFEST V2 ===
 module_description: Talos visual communication protocol over LibXR UART/USB
-constructor_args:
-  - cmd: '@cmd'
-  - uart_name: "usb_talos_cdc"
-  - gyro_topic_name: "gimbal_gyro"
-  - euler_topic_name: "gimbal_euler"
-  - launcher_topic_name: "launcher_ref"
-  - referee_topic_name: "sentry_ref"
-  - task_stack_depth: 1024
-  - thread_priority: LibXR::Thread::Priority::MEDIUM
-required_hardware: uart_name
 depends:
-  - pldx/CMD
-  - pldx/Referee
+- id: GUET-PLDX/CMD
+- id: GUET-PLDX/Referee
 === END MANIFEST === */
 // clang-format on
 
@@ -268,22 +258,21 @@ class TalosLink {
 
 #include "CMD.hpp"
 #include "Referee.hpp"
-#include "app_framework.hpp"
+#include "libxr.hpp"
 #include "message.hpp"
 #include "thread.hpp"
 #include "timebase.hpp"
 #include "transform.hpp"
 #include "uart.hpp"
 
-class TalosLink : public LibXR::Application {
+class TalosLink {
  public:
   TalosLink(
-      LibXR::HardwareContainer& hw, LibXR::ApplicationManager& app, CMD& cmd,
-      const char* uart_name, const char* gyro_topic_name,
+      CMD& cmd, LibXR::UART& uart, const char* gyro_topic_name,
       const char* euler_topic_name, const char* launcher_topic_name,
       const char* referee_topic_name, uint32_t task_stack_depth,
       LibXR::Thread::Priority thread_priority = LibXR::Thread::Priority::MEDIUM)
-      : uart_(hw.template FindOrExit<LibXR::UART>({uart_name})),
+      : uart_((&uart)),
         cmd_(&cmd),
         gyro_topic_(LibXR::Topic::FindOrCreate<Eigen::Matrix<float, 3, 1>>(
             gyro_topic_name)),
@@ -308,12 +297,10 @@ class TalosLink : public LibXR::Application {
     ASSERT(uart_->read_port_ && uart_->write_port_);
     link_ = Pldx::Talos::TalosLink(*uart_->read_port_, *uart_->write_port_,
                                    vision_callback_, simple_callback_);
-    app.Register(*this);
+
     thread_.Create(this, ThreadFunc, "TalosLink", task_stack_depth,
                    thread_priority);
   }
-
-  void OnMonitor() override {}
 
  private:
   static void ThreadFunc(TalosLink* self) {

@@ -76,49 +76,48 @@ int main() {
   assert(state.full == 4);
 
   LibXR::ReadPort read_port(128);
-  read_port = [](LibXR::ReadPort&, bool) { return LibXR::ErrorCode::OK; };
   LibXR::WritePort write_port(4, 128);
-  write_port = [](LibXR::WritePort&, bool) { return LibXR::ErrorCode::OK; };
+  write_port = [](LibXR::WritePort&, bool) {};
   TalosLink transport(read_port, write_port, VISION, SIMPLE_VISION);
+  auto publish = [&](LibXR::ConstRawData data) {
+    auto queue = read_port.GetReadQueue();
+    assert(queue.PushBatch(static_cast<const uint8_t*>(data.addr_),
+                           data.size_) == LibXR::ErrorCode::OK);
+    queue.Publish();
+  };
   assert(transport.Poll() == LibXR::ErrorCode::OK);
-  assert(read_port.busy_.load() == LibXR::ReadPort::BusyState::IDLE);
-  assert(read_port.queue_data_->PushBatch(FULL.data(), 7) ==
-         LibXR::ErrorCode::OK);
+  publish({FULL.data(), 7});
   assert(transport.Poll() == LibXR::ErrorCode::OK && state.full == 4);
-  assert(read_port.queue_data_->PushBatch(FULL.data() + 7, FULL.size() - 7) ==
-         LibXR::ErrorCode::OK);
+  publish({FULL.data() + 7, FULL.size() - 7});
   assert(transport.Poll() == LibXR::ErrorCode::OK && state.full == 5);
   assert(read_port.Size() == 0);
-  assert(read_port.queue_data_->PushBatch(FULL.data(), FULL.size()) ==
-         LibXR::ErrorCode::OK);
-  read_port.busy_.store(LibXR::ReadPort::BusyState::PENDING);
-  assert(transport.Poll() == LibXR::ErrorCode::BUSY && state.full == 5);
-  read_port.busy_.store(LibXR::ReadPort::BusyState::IDLE);
+  publish(FULL);
   assert(transport.Poll() == LibXR::ErrorCode::OK && state.full == 6);
   LibXR::WriteOperation operation;
   assert(transport.Send(imu, operation) == LibXR::ErrorCode::OK);
   std::array<uint8_t, sizeof(imu)> sent{};
-  assert(write_port.queue_data_->PopBatch(sent.data(), sent.size()) ==
-         LibXR::ErrorCode::OK);
-  assert(sent == IMU);
-  LibXR::WriteInfoBlock info{};
-  assert(write_port.queue_info_->Pop(info) == LibXR::ErrorCode::OK);
-  assert(info.data.size_ == IMU.size());
-  write_port.Finish(false, LibXR::ErrorCode::OK, info);
+  {
+    auto queue = write_port.GetWriteQueue();
+    assert(queue.AvailableSize() == IMU.size());
+    queue.PopAll(sent.data());
+  }
+  assert(sent == IMU && write_port.Size() == 0);
   std::array<uint8_t, 128> filler{};
-  assert(write_port.queue_data_->PushBatch(filler.data(), filler.size()) ==
-         LibXR::ErrorCode::OK);
+  assert(write_port(filler, operation) == LibXR::ErrorCode::OK);
   assert(transport.Send(imu, operation) == LibXR::ErrorCode::FULL);
-  assert(write_port.Size() == filler.size() &&
-         write_port.queue_info_->Size() == 0);
-  assert(write_port.queue_data_->PopBatch(filler.data(), filler.size()) ==
-         LibXR::ErrorCode::OK);
+  assert(write_port.Size() == filler.size());
+  {
+    auto queue = write_port.GetWriteQueue();
+    queue.PopAll(filler.data());
+  }
+  assert(write_port.Size() == 0);
   assert(link.Poll() == LibXR::ErrorCode::NOT_SUPPORT);
   assert(link.Send(imu, operation) == LibXR::ErrorCode::NOT_SUPPORT);
-  write_port = nullptr;
-  assert(transport.Send(imu, operation) == LibXR::ErrorCode::NOT_SUPPORT);
-  read_port = nullptr;
-  assert(transport.Poll() == LibXR::ErrorCode::NOT_SUPPORT);
+  LibXR::ReadPort unsupported_read(0);
+  LibXR::WritePort unsupported_write(0, 0);
+  TalosLink unsupported(unsupported_read, unsupported_write);
+  assert(unsupported.Poll() == LibXR::ErrorCode::NOT_SUPPORT);
+  assert(unsupported.Send(imu, operation) == LibXR::ErrorCode::NOT_SUPPORT);
 
   bool isr_seen = false;
   TalosLink isr_link(TalosLink::VisionCallback::Create(

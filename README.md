@@ -94,7 +94,7 @@ ctest --test-dir build --output-on-failure
 CMD 继续执行遥控器在线和控制模式门控。USB 队列满时丢弃本次 IMU
 采样，下一轮发送最新状态；能力帧成功提交后才更新发送周期。
 
-云台配置见 `User/RobotConfig/sentry_gimbal.yaml`，该 USB 使用 Talos 线协议。
+启用 TalosLink 时须为其独占配置 `usb_talos_cdc`，该 USB 使用 Talos 线协议。
 主机须对应发送 `02/len=29` 或 `04/len=4` 视觉帧、接收 `01/len=29`
 IMU 和 `03/len=3` 能力帧。独立协议测试定义 `TALOS_LINK_PROTOCOL_ONLY`，仅编译同一头文件中的协议核心；
 固件默认包含完整 Application。
@@ -104,3 +104,5 @@ IMU 和 `03/len=3` 能力帧。独立协议测试定义 `TALOS_LINK_PROTOCOL_ONL
 使用 xrobot 1.0.1 的 `module` / 有序 `args`；构造函数显式注入外设与服务，实例按依赖顺序创建。参数名和顺序以头文件中的构造函数为准，固件示例见 `User/RobotConfig/`。
 
 保留 PLDX 控制、协议、超时与离线保护。
+
+固件接收线程只缓存视觉指令与接收时间；CMD 所属任务执行已注册输入回调，完成 150 ms 过期、停火保留及 `FeedAIGimbal`。反馈线程使用所属任务缓存的跟随模式，不直接查询 CMD。当前 sentry_gimbal 产品配置已实例化 TalosLink 作为视觉协议，与导航用的 HostDataLink（`FeedAIChassis`）分别更新 AI 云台与底盘分片。

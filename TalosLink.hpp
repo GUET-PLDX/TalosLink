@@ -260,7 +260,6 @@ class TalosLink {
 #include "Referee.hpp"
 #include "libxr.hpp"
 #include "message.hpp"
-#include "mutex.hpp"
 #include "thread.hpp"
 #include "timebase.hpp"
 #include "transform.hpp"
@@ -338,25 +337,26 @@ class TalosLink {
                            : Pldx::Talos::Color::RED;
         referee.StartWaiting();
       }
-      self->ConsumeInput();
+      self->CheckVisionTimeout();
       self->SendFeedback();
       self->thread_.Sleep(2);
     }
   }
 
-  void ConsumeInput() {
-    CMD::Data data{};
-    const bool following = cmd_->GetCtrlMode() == CMD::Mode::CMD_AUTO_CTRL;
-    {
-      LibXR::Mutex::LockGuard lock(input_mutex_);
-      following_ = following;
-      const auto now = LibXR::Timebase::GetMilliseconds();
-      if (vision_online_ && (now - last_vision_time_).ToMillisecond() <= 150U)
-        data = pending_;
-      if (stop_pending_) data.launcher.isfire = false;
-      stop_pending_ = false;
+  void CheckVisionTimeout() {
+    if (vision_online_ &&
+        (LibXR::Timebase::GetMilliseconds() - last_vision_time_)
+                .ToMillisecond() > 150U) {
+      vision_online_ = false;
+      CMD::Data data{};
+      data.ctrl_source = CMD::ControlSource::CTRL_SOURCE_AI;
+      cmd_->FeedAIGimbal(data);
     }
-    data.ctrl_source = CMD::ControlSource::CTRL_SOURCE_AI;
+  }
+
+  void SubmitVision(const CMD::Data& data) {
+    last_vision_time_ = LibXR::Timebase::GetMilliseconds();
+    vision_online_ = true;
     cmd_->FeedAIGimbal(data);
   }
 
@@ -371,11 +371,7 @@ class TalosLink {
     data.gimbal.pit_ddot = frame.data.ref_pitch_a;
     data.gimbal_online = true;
     data.launcher.isfire = frame.data.fire_advice;
-    LibXR::Mutex::LockGuard lock(input_mutex_);
-    pending_ = data;
-    stop_pending_ |= !data.launcher.isfire;
-    last_vision_time_ = LibXR::Timebase::GetMilliseconds();
-    vision_online_ = true;
+    SubmitVision(data);
   }
   void OnSimpleVision(const Pldx::Talos::SendSimpleVisionData& frame) {
     CMD::Data data{};
@@ -383,11 +379,7 @@ class TalosLink {
     data.gimbal.yaw = frame.data.target_yaw;
     data.gimbal.pit = euler_.Pitch();
     data.gimbal_online = true;
-    LibXR::Mutex::LockGuard lock(input_mutex_);
-    pending_ = data;
-    stop_pending_ |= !data.launcher.isfire;
-    last_vision_time_ = LibXR::Timebase::GetMilliseconds();
-    vision_online_ = true;
+    SubmitVision(data);
   }
   void SendFeedback() {
     Pldx::Talos::ReceiveImuData frame{};
@@ -407,10 +399,8 @@ class TalosLink {
     if (frame.time_stamp - last_capabilities_time_ms_ >= 100U) {
       Pldx::Talos::ReceiveCapabilitiesData capabilities{};
       capabilities.time_stamp = frame.time_stamp;
-      {
-        LibXR::Mutex::LockGuard lock(input_mutex_);
-        capabilities.data.following = following_;
-      }
+      capabilities.data.following =
+          cmd_->GetCtrlMode() == CMD::Mode::CMD_AUTO_CTRL;
       const auto RESULT = link_.Send(capabilities, op);
       if (RESULT == LibXR::ErrorCode::OK)
         last_capabilities_time_ms_ = frame.time_stamp;
@@ -430,10 +420,6 @@ class TalosLink {
   Pldx::Talos::Color color_ = Pldx::Talos::Color::RED;
   LibXR::MillisecondTimestamp last_vision_time_{};
   bool vision_online_ = false;
-  LibXR::Mutex input_mutex_;
-  CMD::Data pending_{};
-  bool following_ = false;
-  bool stop_pending_ = false;
   uint32_t last_capabilities_time_ms_ = 0;
 };
 

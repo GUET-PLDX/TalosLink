@@ -105,4 +105,4 @@ IMU 和 `03/len=3` 能力帧。独立协议测试定义 `TALOS_LINK_PROTOCOL_ONL
 
 保留 PLDX 控制、协议、超时与离线保护。
 
-固件接收线程只缓存视觉指令与接收时间；CMD 所属任务执行已注册输入回调，完成 150 ms 过期、停火保留及 `FeedAIGimbal`。反馈线程使用所属任务缓存的跟随模式，不直接查询 CMD。当前 sentry_gimbal 产品配置已实例化 TalosLink 作为视觉协议，与导航用的 HostDataLink（`FeedAIChassis`）分别更新 AI 云台与底盘分片。
+固件接收线程在有效视觉帧到达时调用 `FeedAIGimbal`，并在超过 150 ms 未收到有效帧时提交一次离线状态。每帧按接收顺序提交，包括停火指令。当前 sentry_gimbal 产品配置使用 TalosLink 处理视觉协议，HostDataLink 处理导航输入。

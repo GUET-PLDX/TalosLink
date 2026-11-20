@@ -407,6 +407,15 @@ class TalosLink {
     }
   }
 
+  bool vision_online_ = false;
+  LibXR::MillisecondTimestamp last_vision_time_{};
+  uint32_t last_capabilities_time_ms_ = 0;
+
+  LibXR::EulerAngle<float> euler_{};
+  Eigen::Matrix<float, 3, 1> gyro_{};
+  Pldx::Talos::Color color_ = Pldx::Talos::Color::RED;
+  float bullet_speed_{};
+
   LibXR::UART* uart_;
   CMD* cmd_;
   LibXR::Topic gyro_topic_, euler_topic_, launcher_topic_, referee_topic_;
@@ -414,13 +423,6 @@ class TalosLink {
   LibXR::Callback<const Pldx::Talos::SendVisionData&> vision_callback_;
   LibXR::Callback<const Pldx::Talos::SendSimpleVisionData&> simple_callback_;
   Pldx::Talos::TalosLink link_;
-  Eigen::Matrix<float, 3, 1> gyro_{};
-  LibXR::EulerAngle<float> euler_{};
-  float bullet_speed_{};
-  Pldx::Talos::Color color_ = Pldx::Talos::Color::RED;
-  LibXR::MillisecondTimestamp last_vision_time_{};
-  bool vision_online_ = false;
-  uint32_t last_capabilities_time_ms_ = 0;
 };
 
 #endif  // TALOS_LINK_PROTOCOL_ONLY

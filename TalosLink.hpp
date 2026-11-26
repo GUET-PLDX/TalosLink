@@ -4,6 +4,7 @@
 module_description: Talos visual communication protocol over LibXR UART/USB
 depends:
 - id: GUET-PLDX/CMD
+  ref: 84bb49892e595d373ba6d450142925a16bc50677
 - id: GUET-PLDX/Referee
   ref: 4eb967e28d76bfb3004ddb03a565b10741f1d888
 === END MANIFEST === */
@@ -401,7 +402,7 @@ class TalosLink {
       Pldx::Talos::ReceiveCapabilitiesData capabilities{};
       capabilities.time_stamp = frame.time_stamp;
       capabilities.data.following =
-          cmd_->GetCtrlMode() == CMD::Mode::CMD_AUTO_CTRL;
+          cmd_->GetGimbalCtrlMode() == CMD::Mode::CMD_AUTO_CTRL;
       const auto RESULT = link_.Send(capabilities, op);
       if (RESULT == LibXR::ErrorCode::OK)
         last_capabilities_time_ms_ = frame.time_stamp;

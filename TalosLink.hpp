@@ -4,7 +4,7 @@
 module_description: Talos visual communication protocol over LibXR UART/USB
 depends:
 - id: GUET-PLDX/CMD
-  ref: 923ca3823980650c5ee28a2181c53448d7489183
+  ref: b0c8eed1a1b601361b5e1c7e63d5a79064cd4760
 - id: GUET-PLDX/Referee
   ref: 4eb967e28d76bfb3004ddb03a565b10741f1d888
 === END MANIFEST === */

@@ -82,8 +82,9 @@ ctest --test-dir build --output-on-failure
 ## xrobot 固件接入
 
 `TalosLink.hpp` 同时提供协议核心 `Pldx::Talos::TalosLink` 和
-固件模块 `TalosLink : LibXR::Application`。实例独占 `usb_talos_cdc`，线程每 2 ms
-轮询接收和发送完整 IMU 帧，每 100 ms 发送能力帧。反馈时间戳为开机毫秒数，
+固件模块 `TalosLink : LibXR::Application`。实例独占 `usb_talos_cdc`，线程使用
+`SleepUntil` 按 1 ms 周期（1000 Hz）轮询接收并尝试发送完整 IMU 帧，
+每 100 ms 发送能力帧。反馈时间戳为开机毫秒数，
 姿态来自 `gimbal_euler`，角速度来自 `gimbal_gyro`（rad/s），弹速来自
 `launcher_ref`，队伍颜色来自 `sentry_ref.robot_status.robot_id`。未收到裁判数据时
 弹速为 0、颜色为 RED；power_rune 和 quanta 为 0。

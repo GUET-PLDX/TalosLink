@@ -318,6 +318,7 @@ class TalosLink {
     euler.StartWaiting();
     launcher.StartWaiting();
     referee.StartWaiting();
+    auto last_time = LibXR::Timebase::GetMilliseconds();
     while (true) {
       const auto RX_RESULT = self->link_.Poll();
       UNUSED(RX_RESULT);
@@ -341,7 +342,7 @@ class TalosLink {
       }
       self->CheckVisionTimeout();
       self->SendFeedback();
-      self->thread_.Sleep(2);
+      self->thread_.SleepUntil(last_time, 1);
     }
   }
 
